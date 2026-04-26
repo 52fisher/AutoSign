@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         全自动签到助手（专业重构版）
-// @version      4.0.1
+// @version      4.0.5
 // @description  统一架构、无冗余、全网站支持、高可扩展
 // @author       52fisher 专业重构优化 / 原作者 Fxy29
 // @match        *://*/*
@@ -13,9 +13,8 @@
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM.deleteValue
-// @grant        GM_registerMenuCommand
+// @grant        GM_notification
 // @run-at       document-end
-// @copyright    2025 Fxy29
 // @license      Apache-2.0
 // @namespace    http://tampermonkey.net/
 // ==/UserScript==
@@ -38,6 +37,21 @@
         SIGN_SUCCESS: "✅ 签到完成！",
         REWARD_SUCCESS: "✅ 领取完成！"
     };
+
+    // ========================= 通知函数 =========================
+    function notify(title, message) {
+        if (typeof GM_notification !== "undefined") {
+            GM_notification({ title:title, text: message });
+        } else if (typeof Notification !== "undefined") {
+            if (Notification.permission === "default") {
+                Notification.requestPermission().then(permission => {
+                    if (permission === "granted") new Notification(title, { body: message });
+                });
+            } else if (Notification.permission === "granted") {
+                new Notification(title, { body: message });
+            }
+        }
+    }
 
     // ========================= 签到工具类（核心抽象） =========================
     class SignHelper {
@@ -69,12 +83,13 @@
         // 在当前页面新开iframe 签到，默认不显示iframe,url为签到链接
         iframeSign(url) {
             $("body").append(`<iframe src="${url}" style="display: none;"></iframe>`);
+            return true;
         }
 
         // URL 跳转签到（防循环）
         urlJumpSign(url, once = true) {
             const key = `sign_jump_${url}`;
-            if (once && sessionStorage.getItem(key)) return;
+            if (once && sessionStorage.getItem(key)) return false;
             sessionStorage.setItem(key, "1");
             window.location.href = url;
         }
@@ -84,15 +99,17 @@
             const { btn = "#JD_sign", text = "您今天还没有签到" } = options;
             const body = $("body").text();
             if (body.includes(text) || body.includes("您今天還沒有簽到")) {
-                this.safeClick(btn, { tips: TIPS.SIGN_SUCCESS });
+                return this.safeClick(btn, { tips: TIPS.SIGN_SUCCESS });
             }
+            return false;
         }
 
         // 文本匹配点击
         textClick(containText, selector) {
             if ($("body").text().includes(containText)) {
-                this.safeClick(selector);
+                return this.safeClick(selector);
             }
+            return false;
         }
 
         // 路径匹配（支持字符串 / 正则）
@@ -118,13 +135,15 @@
             excludePaths: ["search.php", "home.php"],
             executePaths: [],
             handler(helper) {
+                let signed = false;
                 helper.delay(() => {
-                    //iframeSign #um a[href^="home.php?mod=task&do=apply&id=2"]
                     const $btn = $('#um a[href^="home.php?mod=task&do=apply&id=2"]');
-                    if (!$btn.length) return;
+                    if (!$btn.length) return false;
                     helper.iframeSign($btn.attr("href"));
                     $btn.find('.qq_bind').attr("src", 'https://www.52pojie.cn/static/image/common/wbs.png').attr("href", "javascript:void(0);");
+                    signed = true;
                 });
+                return signed;
             }
         },
 
@@ -133,7 +152,7 @@
             excludePaths: [],
             executePaths: [],
             handler(helper) {
-                helper.textClick("签到领奖!", ".kx_s");
+                return helper.textClick("签到领奖!", ".kx_s");
             }
         },
 
@@ -146,6 +165,7 @@
                 helper.delay(() => {
                     if ($("body").text().includes("登录")) alert(TIPS.NO_LOGIN);
                 }, TIMEOUT.SLOW);
+                return true;
             }
         },
 
@@ -154,6 +174,7 @@
             excludePaths: [],
             executePaths: ["/member/"],
             handler(helper) {
+                let signed = false;
                 helper.delay(() => {
                     const $btn = $(".sign-in-btn");
                     if (!$btn.text().includes("已签到")) {
@@ -161,10 +182,12 @@
                         helper.delay(() => {
                             $("#signin-modal-show").prop("checked", true);
                             helper.safeClick(".signin-web-btn");
+                            signed = true;
                             location.reload();
                         }, TIMEOUT.FAST);
                     }
                 });
+                return signed;
             }
         },
 
@@ -173,10 +196,12 @@
             excludePaths: [],
             executePaths: [],
             handler(helper) {
+                let signed = false;
                 helper.delay(() => {
                     for (let i = 0; i < 5; i++) $(".btn-icon").eq(i).click();
-                    helper.safeClick(".icon-cont_clock");
+                    signed = helper.safeClick(".icon-cont_clock");
                 }, TIMEOUT.VERY_SLOW);
+                return signed;
             }
         },
 
@@ -185,13 +210,15 @@
             excludePaths: [],
             executePaths: [],
             handler(helper) {
+                let signed = false;
                 const timer = setInterval(() => {
                     const $btn = $(".sign-res button.el-button--success");
                     if ($btn.length) {
-                        helper.safeClick($btn);
+                        signed = helper.safeClick($btn);
                         clearInterval(timer);
                     }
                 }, TIMEOUT.FAST);
+                return signed;
             }
         },
 
@@ -200,10 +227,12 @@
             excludePaths: [],
             executePaths: [],
             handler(helper) {
+                let signed = false;
                 helper.delay(() => {
                     const src = $("#pper_a img").attr("src");
-                    if (!src?.includes("wb.png")) helper.safeClick("#pper_a");
+                    if (!src?.includes("wb.png")) signed = helper.safeClick("#pper_a");
                 });
+                return signed;
             }
         },
 
@@ -218,7 +247,7 @@
         "fishc.com.cn": {
             excludePaths: [],
             executePaths: ["k_misign-sign.html", "plugin.php?id=k_misign:sign", "sign.php"],
-            handler(helper) { helper.discuzSign(); }
+            handler(helper) { return helper.discuzSign(); }
         },
         "mydigit.cn": {
             excludePaths: [],
@@ -275,14 +304,14 @@
         "sybbs.vip": {
             excludePaths: [],
             executePaths: ["plugin.php?id=gsignin:index"],
-            handler(helper) { helper.safeClick(".right"); }
+            handler(helper) { return helper.safeClick(".right"); }
         },
 
         // 樱花萌ACG
         "jiuyh.com": {
             excludePaths: [],
             executePaths: ["yinxingfei_zzza:yinxingfei_zzza_hall", "yinxingfei_zzza-yinxingfei_zzza_hall.html"],
-            handler(helper) { helper.safeClick("#zzza_go"); }
+            handler(helper) { return helper.safeClick("#zzza_go"); }
         },
         "975w.com": {
             excludePaths: [],
@@ -295,11 +324,13 @@
             excludePaths: [],
             executePaths: [],
             handler(helper) {
+                let signed = false;
                 helper.delay(() => {
                     const text = $("#sg_sign").text();
                     if (text.includes("请登录")) return alert(TIPS.NO_LOGIN);
-                    if (!text.includes("已签") && text.includes("签到")) helper.safeClick("#sg_sign");
+                    if (!text.includes("已签") && text.includes("签到")) signed = helper.safeClick("#sg_sign");
                 });
+                return signed;
             }
         },
 
@@ -309,24 +340,29 @@
             executePaths: ["/task", "/mission/today"],
             handler(helper) {
                 if (helper.isMatch("/task")) {
+                    let signed = false;
                     helper.delay(() => {
                         const $span = $(".task-day-list span").eq(15);
                         if ($span.attr("class")?.trim() === "task-finish-icon-go") {
-                            helper.safeClick($(".task-day-list a").eq(3));
+                            signed = helper.safeClick($(".task-day-list a").eq(3));
                             alert(TIPS.SIGN_SUCCESS);
                         }
                     }, TIMEOUT.FAST);
+                    return signed;
                 }
                 if (helper.isMatch("/mission/today")) {
+                    let signed = false;
                     helper.delay(() => {
                         const $span = $(".gold-row span").eq(0);
                         const $btn = $(".gold-row button").eq(0);
                         if ($btn.length && $span.text().includes("签到")) {
-                            helper.safeClick($btn);
+                            signed = helper.safeClick($btn);
                             alert(TIPS.SIGN_SUCCESS);
                         }
                     }, TIMEOUT.EXTREME + 3000);
+                    return signed;
                 }
+                return false;
             }
         },
 
@@ -342,13 +378,15 @@
             excludePaths: [],
             executePaths: [],
             handler(helper) {
+                let signed = false;
                 helper.delay(() => {
                     if ($("body").text().includes("登录") || $("body").text().includes("注册")) {
                         alert(TIPS.NO_LOGIN);
                         return;
                     }
-                    helper.textClick("签到领奖", ".J_punch");
+                    signed = helper.textClick("签到领奖", ".J_punch");
                 }, TIMEOUT.SLOW - 200);
+                return signed;
             }
         },
 
@@ -358,9 +396,9 @@
             executePaths: [],
             handler(helper) {
                 if (helper.textClick("签到领奖!")) {
-                    helper.urlJumpSign("https://www.iya.app/plugin.php?id=dsu_paulsign:sign");
+                    return helper.urlJumpSign("https://www.iya.app/plugin.php?id=dsu_paulsign:sign");
                 } else {
-                    helper.textClick("签到", "a:contains('签到')");
+                    return helper.textClick("签到", "a:contains('签到')");
                 }
             }
         },
@@ -370,8 +408,9 @@
             excludePaths: [],
             executePaths: [],
             handler(helper) {
-                helper.textClick("签到领奖!", ".kx_s");
+                let signed = helper.textClick("签到领奖!", ".kx_s");
                 helper.delay(() => helper.urlJumpSign("/home.php?mod=task&do=apply&id=1"));
+                return signed;
             }
         },
 
@@ -380,10 +419,12 @@
             excludePaths: [],
             executePaths: ["home.php?mod=task&do=view&id=1"],
             handler(helper) {
+                let signed = false;
                 helper.delay(() => {
                     const href = $(".taskbtn").attr("href");
-                    if (href && !href.includes("javascript")) helper.safeClick(".taskbtn");
+                    if (href && !href.includes("javascript")) signed = helper.safeClick(".taskbtn");
                 }, TIMEOUT.FAST);
+                return signed;
             }
         },
 
@@ -391,7 +432,7 @@
         "chenyuanqingshui.com": {
             excludePaths: [],
             executePaths: [],
-            handler(helper) { helper.textClick("点击领取今天的签到奖励", ".user-w-qd.cur"); }
+            handler(helper) { return helper.textClick("点击领取今天的签到奖励", ".user-w-qd.cur"); }
         },
         "forum.zwsoft.cn": {
             excludePaths: [],
@@ -403,14 +444,14 @@
         "littleskin.cn": {
             excludePaths: [],
             executePaths: [],
-            handler(helper) { helper.textClick("签到", ".bg-gradient-primary"); }
+            handler(helper) { return helper.textClick("签到", ".bg-gradient-primary"); }
         },
 
         // 4K世界 / 5A版本库 / 国芯 / 镜客居
         "4ksj.org": {
             excludePaths: [],
             executePaths: ["qiandao.php", "zqlj_sign"],
-            handler(helper) { helper.textClick("点击打卡", ".btna"); }
+            handler(helper) { return helper.textClick("点击打卡", ".btna"); }
         },
         "5abbk.com": {
             excludePaths: [],
@@ -432,7 +473,7 @@
         "ikuuu.me": {
             excludePaths: [],
             executePaths: ["/user"],
-            handler(helper) { helper.textClick("每日签到", ".btn-primary"); }
+            handler(helper) { return helper.textClick("每日签到", ".btn-primary"); }
         },
 
         // 国语视界 / 食品论坛 / Anime字幕 / ZMX-IT
@@ -440,13 +481,15 @@
             excludePaths: [],
             executePaths: ["dsu_paulsign-sign.html"],
             handler(helper) {
+                let signed = false;
                 helper.delay(() => {
                     if ($("body").text().includes("今天签到了吗") && $("body").text().includes("写下今天最想说的话")) {
-                        helper.safeClick("#kx");
+                        signed = helper.safeClick("#kx");
                         $("#todaysay").val("每天签到水一发。。。");
                         unsafeWindow.showWindow('qwindow', 'qiandao', 'post', '0');
                     }
                 });
+                return signed;
             }
         },
         "foodmate.net": {
@@ -469,14 +512,14 @@
         "acgns.cc": {
             excludePaths: [],
             executePaths: [],
-            handler(helper) { helper.textClick("签到", ".inn-nav__point-sign-daily__btn"); }
+            handler(helper) { return helper.textClick("签到", ".inn-nav__point-sign-daily__btn"); }
         },
 
         // 调侃网
         "tiaokanwang.com": {
             excludePaths: [],
             executePaths: [],
-            handler(helper) { helper.textClick("今日签到", ".erphpdown-sc-btn"); }
+            handler(helper) { return helper.textClick("今日签到", ".erphpdown-sc-btn"); }
         },
 
         // 知轩藏书 / 梦楠分享 / 道言分享
@@ -484,12 +527,14 @@
             excludePaths: [],
             executePaths: [],
             handler(helper) {
+                let signed = false;
                 helper.delay(() => {
                     $("a.initiate-checkin").each((_, el) => {
                         const t = $(el).text();
-                        if (t.includes("今日奖励") || t.includes("每日签到")) return helper.safeClick(el);
+                        if (t.includes("今日奖励") || t.includes("每日签到")) signed = helper.safeClick(el);
                     });
                 });
+                return signed;
             }
         },
         "mnpc.net": {
@@ -507,14 +552,14 @@
         "blog.51cto.com": {
             excludePaths: [],
             executePaths: [],
-            handler(helper) { helper.textClick("签到领勋章", "#sign"); }
+            handler(helper) { return helper.textClick("签到领勋章", "#sign"); }
         },
 
         // 布谷TV / 马克喵 / 咸鱼单机 / 小黑库
         "bugutv.vip": {
             excludePaths: [],
             executePaths: ["/user"],
-            handler(helper) { helper.textClick("每日签到", ".go-user-qiandao"); }
+            handler(helper) { return helper.textClick("每日签到", ".go-user-qiandao"); }
         },
         "macat.vip": {
             excludePaths: [],
@@ -537,10 +582,12 @@
             excludePaths: [],
             executePaths: [],
             handler(helper) {
+                let signed = false;
                 helper.delay(() => {
                     const $el = $("#setsign");
-                    if ($el.length && !$el.text().includes("已签到")) helper.safeClick($el);
+                    if ($el.length && !$el.text().includes("已签到")) signed = helper.safeClick($el);
                 });
+                return signed;
             }
         },
 
@@ -549,10 +596,12 @@
             excludePaths: [],
             executePaths: ["usercenter_task.html?subaction=sign"],
             handler(helper) {
+                let signed = false;
                 helper.delay(() => {
-                    helper.safeClick(".task_signIn_week_item_img.heartbeat");
+                    signed = helper.safeClick(".task_signIn_week_item_img.heartbeat");
                     helper.delay(() => helper.safeClick(".signIn-progress-btn"), TIMEOUT.FAST);
                 }, TIMEOUT.EXTREME);
+                return signed;
             }
         },
 
@@ -561,9 +610,11 @@
             excludePaths: [],
             executePaths: [],
             handler(helper) {
+                let signed = false;
                 helper.delay(() => {
-                    if ($(".m_sign").text() === "签到") helper.safeClick("#m_sign");
+                    if ($(".m_sign").text() === "签到") signed = helper.safeClick("#m_sign");
                 });
+                return signed;
             }
         },
 
@@ -572,6 +623,7 @@
             excludePaths: [],
             executePaths: [],
             handler(helper) {
+                let signed = false;
                 helper.delay(() => {
                     const bg = $("#dcsignin_tips").css("background-image");
                     if (bg.includes("signin_no.png")) {
@@ -579,9 +631,11 @@
                         helper.delay(() => {
                             helper.safeClick($(".dcsignin_list li").eq(8));
                             helper.safeClick('button[name="signpn"]');
+                            signed = true;
                         });
                     }
                 });
+                return signed;
             }
         },
         "nmandy.net": {
@@ -599,7 +653,7 @@
         "winmoes.com": {
             excludePaths: [],
             executePaths: [],
-            handler(helper) { helper.safeClick($(".link-block").eq(7)); }
+            handler(helper) { return helper.safeClick($(".link-block").eq(7)); }
         },
 
         // 游蝶网单
@@ -619,10 +673,12 @@
             excludePaths: [],
             executePaths: [],
             handler(helper) {
+                let signed = false;
                 helper.delay(() => {
                     const $span = $("#sg_sign .btn-group button span");
-                    if ($span.text().trim() === "签到") helper.safeClick($span.closest("button"));
+                    if ($span.text().trim() === "签到") signed = helper.safeClick($span.closest("button"));
                 }, TIMEOUT.SLOW - 200);
+                return signed;
             }
         },
         "youxiou.com": {
@@ -636,9 +692,11 @@
             excludePaths: [],
             executePaths: [],
             handler(helper) {
+                let signed = false;
                 helper.delay(() => {
-                    if (!$("body").text().includes("已签")) helper.safeClick("#sg_sign");
+                    if (!$("body").text().includes("已签")) signed = helper.safeClick("#sg_sign");
                 }, TIMEOUT.SLOW - 200);
+                return signed;
             }
         },
 
@@ -648,7 +706,8 @@
             executePaths: [],
             handler(helper) {
                 const $el = $(".img-badge").eq(3);
-                if ($el.hasClass("initiate-checkin")) helper.safeClick($el);
+                if ($el.hasClass("initiate-checkin")) return helper.safeClick($el);
+                return false;
             }
         },
 
@@ -657,9 +716,11 @@
             excludePaths: [],
             executePaths: ["/#/points"],
             handler(helper) {
+                let signed = false;
                 $("div").each((_, el) => {
-                    if ($(el).text() === "立即签到") helper.safeClick(el);
+                    if ($(el).text() === "立即签到") signed = helper.safeClick(el);
                 });
+                return signed;
             }
         },
 
@@ -668,9 +729,11 @@
             excludePaths: [],
             executePaths: [],
             handler(helper) {
+                let signed = false;
                 $("a.initiate-checkin").each((_, el) => {
-                    if ($(el).text().includes("签到")) return helper.safeClick(el);
+                    if ($(el).text().includes("签到")) signed = helper.safeClick(el);
                 });
+                return signed;
             }
         },
 
@@ -679,15 +742,17 @@
             excludePaths: [],
             executePaths: [],
             handler(helper) {
+                let signed = false;
                 const style = $("#dcsignin_tips").attr("style");
                 if (style?.includes("signin_no")) {
                     helper.safeClick("#dcsignin_tips");
                     helper.delay(() => {
                         helper.safeClick($(".dcsignin_list li").eq(8));
                         $("#emotid").val("8");
-                        helper.safeClick(".pnc");
+                        signed = helper.safeClick(".pnc");
                     });
                 }
+                return signed;
             }
         },
 
@@ -696,11 +761,13 @@
             excludePaths: [],
             executePaths: ["/user/center/signin", "/user/center/lottery"],
             handler(helper) {
+                let signed = false;
                 helper.delay(() => {
-                    helper.textClick("立即签到", "button.signin.btn");
-                    helper.textClick("去抽奖", "button");
-                    helper.safeClick("#turntable-item-0 .text-free").parent();
+                    if (helper.textClick("立即签到", "button.signin.btn")) signed = true;
+                    if (helper.textClick("去抽奖", "button")) signed = true;
+                    if ($("#turntable-item-0 .text-free").parent().length && helper.safeClick($("#turntable-item-0 .text-free").parent())) signed = true;
                 }, TIMEOUT.FAST);
+                return signed;
             }
         },
 
@@ -709,9 +776,11 @@
             excludePaths: [],
             executePaths: [],
             handler(helper) {
+                let signed = false;
                 $("#um a").each((_, el) => {
-                    if ($(el).text().includes("打卡签到")) return helper.safeClick(el);
+                    if ($(el).text().includes("打卡签到")) signed = helper.safeClick(el);
                 });
+                return signed;
             }
         },
 
@@ -720,6 +789,7 @@
             excludePaths: [],
             executePaths: ["read-gktid-142599.html"],
             handler(helper) {
+                let signed = false;
                 helper.delay(() => {
                     const now = new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" });
                     const today = now.split(" ")[0];
@@ -737,12 +807,14 @@
                                 helper.safeClick("#url_2");
                                 GM_setValue("time2", cur);
                                 GM_setValue("time1", "");
+                                signed = true;
                                 alert(TIPS.SIGN_SUCCESS);
                             } else setTimeout(check, 10 * 60 * 1000);
                         };
                         check();
                     }
                 }, TIMEOUT.FAST);
+                return signed;
             }
         },
 
@@ -752,7 +824,8 @@
             executePaths: ["/u.php"],
             handler(helper) {
                 const $p = $("#punch");
-                if ($p.text().includes("每日打卡") || $p.text().includes("未打卡")) helper.safeClick($p);
+                if ($p.text().includes("每日打卡") || $p.text().includes("未打卡")) return helper.safeClick($p);
+                return false;
             }
         },
 
@@ -760,7 +833,7 @@
         "55188.com": {
             excludePaths: [],
             executePaths: ["plugin.php?id=sign"],
-            handler(helper) { helper.textClick("您今天还没有签到哦", "#addsign"); }
+            handler(helper) { return helper.textClick("您今天还没有签到哦", "#addsign"); }
         },
 
         // 星空论坛
@@ -768,11 +841,13 @@
             excludePaths: [],
             executePaths: [],
             handler(helper) {
+                let signed = false;
                 helper.delay(() => {
-                    helper.safeClick("#kx");
+                    signed = helper.safeClick("#kx");
                     $("#todaysay").val("今天天气真好~签到。");
                     unsafeWindow.showWindow("qwindow", "qiandao", "post", "0");
                 }, TIMEOUT.MAX);
+                return signed;
             }
         },
 
@@ -781,7 +856,8 @@
             excludePaths: [],
             executePaths: ["/profile"],
             handler(helper) {
-                if ($("#sign").text() === "立即签到") helper.safeClick("#sign");
+                if ($("#sign").text() === "立即签到") return helper.safeClick("#sign");
+                return false;
             }
         },
 
@@ -789,7 +865,7 @@
         "duokan.club": {
             excludePaths: [],
             executePaths: ["/sign.php"],
-            handler(helper) { helper.textClick("点击打卡", ".btna"); }
+            handler(helper) { return helper.textClick("点击打卡", ".btna"); }
         },
         "tekqart.com": {
             excludePaths: [],
@@ -807,15 +883,17 @@
             excludePaths: [],
             executePaths: [],
             handler(helper) {
+                let signed = false;
                 helper.delay(() => {
                     const $el = $(".a-s-header-tool-item.header-tool-item-console");
                     if (!$el.length) return;
                     $el.trigger("mouseover");
                     helper.delay(() => {
                         const $title = $(".user-sign-highlight .user-sign-item-title");
-                        if ($title.text().includes("签到")) helper.safeClick($title.closest(".user-sign-highlight"));
+                        if ($title.text().includes("签到")) signed = helper.safeClick($title.closest(".user-sign-highlight"));
                     }, TIMEOUT.FAST);
                 }, TIMEOUT.SLOW);
+                return signed;
             }
         },
 
@@ -823,14 +901,14 @@
         "luogu.com.cn": {
             excludePaths: [],
             executePaths: [],
-            handler(helper) { helper.textClick("点击打卡", ".am-btn-warning"); }
+            handler(helper) { return helper.textClick("点击打卡", ".am-btn-warning"); }
         },
 
         // 小白游戏网
         "xbgame.net": {
             excludePaths: [],
             executePaths: ["/task"],
-            handler(helper) { helper.safeClick($(".link-block").eq(3)); }
+            handler(helper) { return helper.safeClick($(".link-block").eq(3)); }
         },
 
         // apk.tw
@@ -838,6 +916,7 @@
             excludePaths: [],
             executePaths: [],
             handler(helper) {
+                let signed = false;
                 helper.delay(() => {
                     const el = $("#my_amupper")[0];
                     if (!el) return;
@@ -845,7 +924,9 @@
                     ev.initEvent("click", true, false);
                     el.dispatchEvent(ev);
                     document.cookie = "adblock_forbit=1;expires=0";
+                    signed = true;
                 }, TIMEOUT.FAST);
+                return signed;
             }
         },
 
@@ -854,6 +935,7 @@
             excludePaths: [],
             executePaths: ["/cn/rewards", "/tw/rewards"],
             handler(helper) {
+                let signed = false;
                 helper.delay(() => {
                     $("button").each((_, btn) => {
                         const $b = $(btn);
@@ -862,10 +944,11 @@
                             $b.find('span[class*="PointsActivity"]').length &&
                             $b.closest('[class*="dailyCheckIn"]').length
                         ) {
-                            return helper.safeClick($b);
+                            if (helper.safeClick($b)) signed = true;
                         }
                     });
                 }, TIMEOUT.SLOW);
+                return signed;
             }
         },
 
@@ -875,7 +958,8 @@
             executePaths: [],
             handler(helper) {
                 const $t = $("#sign_title");
-                if ($t.text().includes("立即签到")) helper.safeClick($t);
+                if ($t.text().includes("立即签到")) return helper.safeClick($t);
+                return false;
             }
         },
 
@@ -883,7 +967,7 @@
         "minebbs.com": {
             excludePaths: [],
             executePaths: [],
-            handler(helper) { helper.textClick("每日签到", ".button--cta"); }
+            handler(helper) { return helper.textClick("每日签到", ".button--cta"); }
         },
 
         // 三宫六院
@@ -891,14 +975,17 @@
             excludePaths: [],
             executePaths: [],
             handler(helper) {
+                let signed = false;
                 helper.delay(() => {
                     if ($("body").text().includes("已签到")) return;
                     helper.safeClick($("#k_misign_topb a"));
+                    signed = true;
                     location.reload();
                     helper.delay(() => {
                         location.href = "https://www.sglynp.com/home.php?mod=space&do=notice&view=system";
                     }, TIMEOUT.FAST + Math.random() * 2000);
                 });
+                return signed;
             }
         },
 
@@ -908,8 +995,9 @@
             executePaths: ["/kf_growup.php"],
             handler(helper) {
                 if (!$("body").text().includes("今天的每日奖励已经领过了")) {
-                    helper.safeClick('a[href*="kf_growup.php?ok=3"]');
+                    return helper.safeClick('a[href*="kf_growup.php?ok=3"]');
                 }
+                return false;
             }
         },
 
@@ -918,14 +1006,16 @@
             excludePaths: [],
             executePaths: ["plugin.php?id=dsu_paulsign:sign"],
             handler(helper) {
+                let signed = false;
                 helper.delay(() => {
                     if (!$("body").text().includes("您今日已经签到")) {
                         location.href = "https://bbs.125.la/";
                         return;
                     }
-                    helper.safeClick("#sign");
+                    signed = helper.safeClick("#sign");
                     helper.delay(() => helper.safeClick("a.layui-layer-btn0"), TIMEOUT.FAST + Math.random() * 2000);
                 });
+                return signed;
             }
         },
 
@@ -934,17 +1024,19 @@
             excludePaths: [],
             executePaths: [],
             handler(helper) {
+                let signed = false;
                 helper.delay(() => {
                     helper.safeClick($('div[data-v-729e1e50] > div.cursor-pointer'));
                     let $btn = $('button:contains("每日签到")');
                     if (!$btn.length) $btn = $("button.text-secondary");
                     if (!$btn.length) $btn = $("div.func button:nth-child(3)");
                     if ($btn.length && !$btn.prop("disabled")) {
-                        helper.safeClick($btn);
+                        signed = helper.safeClick($btn);
                         location.reload();
                         helper.delay(() => helper.safeClick($('div[data-v-729e1e50] > div.cursor-pointer')), TIMEOUT.FAST + Math.random() * 2000);
                     }
                 });
+                return signed;
             }
         },
 
@@ -956,7 +1048,9 @@
                 if (!$("body").text().includes("连续签到")) {
                     helper.safeClick(".punch_btn");
                     helper.delay(() => location.reload(), TIMEOUT.FAST + Math.random() * 2000);
+                    return true;
                 }
+                return false;
             }
         },
 
@@ -966,6 +1060,7 @@
             executePaths: [],
             handler(helper) {
                 helper.delay(() => location.reload(), TIMEOUT.FAST + Math.random() * 2000);
+                return true;
             }
         },
 
@@ -974,10 +1069,11 @@
             excludePaths: [],
             executePaths: ["/forum.php"],
             handler(helper) {
-                if ($('img[src*="pperwb.gif"]').length) return;
+                if ($('img[src*="pperwb.gif"]').length) return false;
                 helper.safeClick($('img[onclick*="dsu_amupper"]'));
                 helper.delay(() => helper.safeClick(".pn.pnc"), 500);
                 helper.delay(() => helper.safeClick("#myprompt"), 500);
+                return true;
             }
         },
 
@@ -987,8 +1083,12 @@
             executePaths: [],
             handler(helper) {
                 const $t = $("#tt_sign");
-                if ($t.text().includes("登录")) return alert(TIPS.NO_LOGIN);
-                if ($t.text().includes("立即签到")) helper.safeClick($t);
+                if ($t.text().includes("登录")) {
+                    alert(TIPS.NO_LOGIN);
+                    return false;
+                }
+                if ($t.text().includes("立即签到")) return helper.safeClick($t);
+                return false;
             }
         },
 
@@ -996,7 +1096,7 @@
         "joinquant.com": {
             excludePaths: [],
             executePaths: ["/view/user/floor"],
-            handler(helper) { helper.textClick("签到领积分", ".menu-credit-button"); }
+            handler(helper) { return helper.textClick("签到领积分", ".menu-credit-button"); }
         },
 
         // HadSky
@@ -1004,13 +1104,15 @@
             excludePaths: [],
             executePaths: ["/app-puyuetian_phptask-index.html"],
             handler(helper) {
+                let signed = false;
                 helper.delay(() => {
                     $("button.btn.get span").each((_, s) => {
                         if ($(s).text().replace(/\s/g, "").includes("领取奖励")) {
-                            helper.safeClick($(s).closest("button"));
+                            if (helper.safeClick($(s).closest("button"))) signed = true;
                         }
                     });
                 });
+                return signed;
             }
         },
 
@@ -1018,35 +1120,33 @@
         "sonkwo.cn": {
             excludePaths: [],
             executePaths: [],
-            handler(helper) { helper.safeClick(".store_user_card_action_check"); }
+            handler(helper) { return helper.safeClick(".store_user_card_action_check"); }
         },
 
         // 再漫画
         "zaimanhua.com": {
             excludePaths: [],
             executePaths: ["/i"],
-            handler(helper) { helper.safeClick(".ant-btn-primary"); }
+            handler(helper) { return helper.safeClick(".ant-btn-primary"); }
         },
 
         // 不忘初心
         "pc528.net": {
             excludePaths: [],
             executePaths: ["/user-center.html?pd=qiandao"],
-            handler(helper) { helper.safeClick("#qiandao_ajax"); }
+            handler(helper) { return helper.safeClick("#qiandao_ajax"); }
         },
 
         // 恩山无线
         "right.com.cn": {
             excludePaths: [],
             executePaths: ["forum/erling_qd-sign_in.html"],
-            handler(helper) { helper.safeClick("#signin-btn"); }
+            handler(helper) { return helper.safeClick("#signin-btn"); }
         },
         "ccgfw.top": {
             excludePaths: [],
             executePaths: [/\/user\/?$/],
-            handler(helper) {
-                helper.safeClick("#checkin");
-            }
+            handler(helper) { return helper.safeClick("#checkin"); }
         }
     };
 
@@ -1059,9 +1159,13 @@
             const config = SIGN_CONFIG[host];
             if (helper.checkPath(config.excludePaths, config.executePaths)) {
                 try {
-                    config.handler(helper);
+                    const result = config.handler(helper);
+                    if (result) {
+                        notify("签到成功", `${host} 签到完成！`);
+                    }
                 } catch (err) {
                     console.error("[Sign 错误]", host, err);
+                    notify("签到出错", `${host} 签到失败！`);
                 }
             }
         }
