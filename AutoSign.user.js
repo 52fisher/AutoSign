@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         全自动签到助手（专业重构版）
-// @version      4.0.5
+// @version      4.0.6
 // @description  统一架构、无冗余、全网站支持、高可扩展
 // @author       52fisher 专业重构优化 / 原作者 Fxy29
 // @match        *://*/*
@@ -17,6 +17,7 @@
 // @run-at       document-end
 // @license      Apache-2.0
 // @namespace    http://tampermonkey.net/
+// @note         4.0.6 修复delayhelper类的延迟执行问题
 // ==/UserScript==
 
 (function ($) {
@@ -135,15 +136,13 @@
             excludePaths: ["search.php", "home.php"],
             executePaths: [],
             handler(helper) {
-                let signed = false;
+                const $btn = $('#um a[href^="home.php?mod=task&do=apply&id=2"]');
+                if (!$btn.length) return false;
                 helper.delay(() => {
-                    const $btn = $('#um a[href^="home.php?mod=task&do=apply&id=2"]');
-                    if (!$btn.length) return false;
                     helper.iframeSign($btn.attr("href"));
                     $btn.find('.qq_bind').attr("src", 'https://www.52pojie.cn/static/image/common/wbs.png').attr("href", "javascript:void(0);");
-                    signed = true;
                 });
-                return signed;
+                return true;
             }
         },
 
@@ -174,20 +173,17 @@
             excludePaths: [],
             executePaths: ["/member/"],
             handler(helper) {
-                let signed = false;
+                const $btn = $(".sign-in-btn");
+                if (!$btn.length || $btn.text().includes("已签到")) return false;
                 helper.delay(() => {
-                    const $btn = $(".sign-in-btn");
-                    if (!$btn.text().includes("已签到")) {
-                        helper.safeClick($btn);
-                        helper.delay(() => {
-                            $("#signin-modal-show").prop("checked", true);
-                            helper.safeClick(".signin-web-btn");
-                            signed = true;
-                            location.reload();
-                        }, TIMEOUT.FAST);
-                    }
+                    helper.safeClick($btn);
+                    helper.delay(() => {
+                        $("#signin-modal-show").prop("checked", true);
+                        helper.safeClick(".signin-web-btn");
+                        location.reload();
+                    }, TIMEOUT.FAST);
                 });
-                return signed;
+                return true;
             }
         },
 
@@ -196,12 +192,13 @@
             excludePaths: [],
             executePaths: [],
             handler(helper) {
-                let signed = false;
+                const $btn = $(".icon-cont_clock");
+                if (!$btn.length) return false;
                 helper.delay(() => {
                     for (let i = 0; i < 5; i++) $(".btn-icon").eq(i).click();
-                    signed = helper.safeClick(".icon-cont_clock");
+                    helper.safeClick(".icon-cont_clock");
                 }, TIMEOUT.VERY_SLOW);
-                return signed;
+                return true;
             }
         },
 
@@ -210,15 +207,16 @@
             excludePaths: [],
             executePaths: [],
             handler(helper) {
-                let signed = false;
+                const $btn = $(".sign-res button.el-button--success");
+                if (!$btn.length) return false;
                 const timer = setInterval(() => {
                     const $btn = $(".sign-res button.el-button--success");
                     if ($btn.length) {
-                        signed = helper.safeClick($btn);
+                        helper.safeClick($btn);
                         clearInterval(timer);
                     }
                 }, TIMEOUT.FAST);
-                return signed;
+                return true;
             }
         },
 
@@ -227,12 +225,13 @@
             excludePaths: [],
             executePaths: [],
             handler(helper) {
-                let signed = false;
+                const $btn = $("#pper_a");
+                const src = $("#pper_a img").attr("src");
+                if (!$btn.length || src?.includes("wb.png")) return false;
                 helper.delay(() => {
-                    const src = $("#pper_a img").attr("src");
-                    if (!src?.includes("wb.png")) signed = helper.safeClick("#pper_a");
+                    helper.safeClick("#pper_a");
                 });
-                return signed;
+                return true;
             }
         },
 
@@ -324,13 +323,13 @@
             excludePaths: [],
             executePaths: [],
             handler(helper) {
-                let signed = false;
+                const $btn = $("#sg_sign");
+                const text = $btn.text();
+                if (!$btn.length || text.includes("请登录") || text.includes("已签") || !text.includes("签到")) return false;
                 helper.delay(() => {
-                    const text = $("#sg_sign").text();
-                    if (text.includes("请登录")) return alert(TIPS.NO_LOGIN);
-                    if (!text.includes("已签") && text.includes("签到")) signed = helper.safeClick("#sg_sign");
+                    helper.safeClick("#sg_sign");
                 });
-                return signed;
+                return true;
             }
         },
 
@@ -340,27 +339,23 @@
             executePaths: ["/task", "/mission/today"],
             handler(helper) {
                 if (helper.isMatch("/task")) {
-                    let signed = false;
+                    const $span = $(".task-day-list span").eq(15);
+                    if (!$span.length || $span.attr("class")?.trim() !== "task-finish-icon-go") return false;
                     helper.delay(() => {
-                        const $span = $(".task-day-list span").eq(15);
-                        if ($span.attr("class")?.trim() === "task-finish-icon-go") {
-                            signed = helper.safeClick($(".task-day-list a").eq(3));
-                            alert(TIPS.SIGN_SUCCESS);
-                        }
+                        helper.safeClick($(".task-day-list a").eq(3));
+                        alert(TIPS.SIGN_SUCCESS);
                     }, TIMEOUT.FAST);
-                    return signed;
+                    return true;
                 }
                 if (helper.isMatch("/mission/today")) {
-                    let signed = false;
+                    const $span = $(".gold-row span").eq(0);
+                    const $btn = $(".gold-row button").eq(0);
+                    if (!$btn.length || !$span.text().includes("签到")) return false;
                     helper.delay(() => {
-                        const $span = $(".gold-row span").eq(0);
-                        const $btn = $(".gold-row button").eq(0);
-                        if ($btn.length && $span.text().includes("签到")) {
-                            signed = helper.safeClick($btn);
-                            alert(TIPS.SIGN_SUCCESS);
-                        }
+                        helper.safeClick($btn);
+                        alert(TIPS.SIGN_SUCCESS);
                     }, TIMEOUT.EXTREME + 3000);
-                    return signed;
+                    return true;
                 }
                 return false;
             }
@@ -378,15 +373,16 @@
             excludePaths: [],
             executePaths: [],
             handler(helper) {
-                let signed = false;
+                if ($("body").text().includes("登录") || $("body").text().includes("注册")) {
+                    alert(TIPS.NO_LOGIN);
+                    return false;
+                }
+                const $btn = $(".J_punch");
+                if (!$btn.length) return false;
                 helper.delay(() => {
-                    if ($("body").text().includes("登录") || $("body").text().includes("注册")) {
-                        alert(TIPS.NO_LOGIN);
-                        return;
-                    }
-                    signed = helper.textClick("签到领奖", ".J_punch");
+                    helper.textClick("签到领奖", ".J_punch");
                 }, TIMEOUT.SLOW - 200);
-                return signed;
+                return true;
             }
         },
 
@@ -481,15 +477,13 @@
             excludePaths: [],
             executePaths: ["dsu_paulsign-sign.html"],
             handler(helper) {
-                let signed = false;
+                if (!$("body").text().includes("今天签到了吗") || !$("body").text().includes("写下今天最想说的话")) return false;
                 helper.delay(() => {
-                    if ($("body").text().includes("今天签到了吗") && $("body").text().includes("写下今天最想说的话")) {
-                        signed = helper.safeClick("#kx");
-                        $("#todaysay").val("每天签到水一发。。。");
-                        unsafeWindow.showWindow('qwindow', 'qiandao', 'post', '0');
-                    }
+                    helper.safeClick("#kx");
+                    $("#todaysay").val("每天签到水一发。。。");
+                    unsafeWindow.showWindow('qwindow', 'qiandao', 'post', '0');
                 });
-                return signed;
+                return true;
             }
         },
         "foodmate.net": {
@@ -527,14 +521,20 @@
             excludePaths: [],
             executePaths: [],
             handler(helper) {
-                let signed = false;
+                const $btns = $("a.initiate-checkin");
+                let found = false;
+                $btns.each((_, el) => {
+                    const t = $(el).text();
+                    if (t.includes("今日奖励") || t.includes("每日签到")) found = true;
+                });
+                if (!found) return false;
                 helper.delay(() => {
                     $("a.initiate-checkin").each((_, el) => {
                         const t = $(el).text();
-                        if (t.includes("今日奖励") || t.includes("每日签到")) signed = helper.safeClick(el);
+                        if (t.includes("今日奖励") || t.includes("每日签到")) helper.safeClick(el);
                     });
                 });
-                return signed;
+                return true;
             }
         },
         "mnpc.net": {
@@ -582,12 +582,12 @@
             excludePaths: [],
             executePaths: [],
             handler(helper) {
-                let signed = false;
+                const $el = $("#setsign");
+                if (!$el.length || $el.text().includes("已签到")) return false;
                 helper.delay(() => {
-                    const $el = $("#setsign");
-                    if ($el.length && !$el.text().includes("已签到")) signed = helper.safeClick($el);
+                    helper.safeClick($el);
                 });
-                return signed;
+                return true;
             }
         },
 
@@ -596,12 +596,13 @@
             excludePaths: [],
             executePaths: ["usercenter_task.html?subaction=sign"],
             handler(helper) {
-                let signed = false;
+                const $btn = $(".task_signIn_week_item_img.heartbeat");
+                if (!$btn.length) return false;
                 helper.delay(() => {
-                    signed = helper.safeClick(".task_signIn_week_item_img.heartbeat");
+                    helper.safeClick(".task_signIn_week_item_img.heartbeat");
                     helper.delay(() => helper.safeClick(".signIn-progress-btn"), TIMEOUT.FAST);
                 }, TIMEOUT.EXTREME);
-                return signed;
+                return true;
             }
         },
 
@@ -610,11 +611,12 @@
             excludePaths: [],
             executePaths: [],
             handler(helper) {
-                let signed = false;
+                const $btn = $(".m_sign");
+                if (!$btn.length || $btn.text() !== "签到") return false;
                 helper.delay(() => {
-                    if ($(".m_sign").text() === "签到") signed = helper.safeClick("#m_sign");
+                    helper.safeClick("#m_sign");
                 });
-                return signed;
+                return true;
             }
         },
 
@@ -623,19 +625,16 @@
             excludePaths: [],
             executePaths: [],
             handler(helper) {
-                let signed = false;
+                const bg = $("#dcsignin_tips").css("background-image");
+                if (!bg?.includes("signin_no.png")) return false;
                 helper.delay(() => {
-                    const bg = $("#dcsignin_tips").css("background-image");
-                    if (bg.includes("signin_no.png")) {
-                        helper.safeClick("#dcsignin_tips");
-                        helper.delay(() => {
-                            helper.safeClick($(".dcsignin_list li").eq(8));
-                            helper.safeClick('button[name="signpn"]');
-                            signed = true;
-                        });
-                    }
+                    helper.safeClick("#dcsignin_tips");
+                    helper.delay(() => {
+                        helper.safeClick($(".dcsignin_list li").eq(8));
+                        helper.safeClick('button[name="signpn"]');
+                    });
                 });
-                return signed;
+                return true;
             }
         },
         "nmandy.net": {
@@ -673,12 +672,12 @@
             excludePaths: [],
             executePaths: [],
             handler(helper) {
-                let signed = false;
+                const $span = $("#sg_sign .btn-group button span");
+                if (!$span.length || $span.text().trim() !== "签到") return false;
                 helper.delay(() => {
-                    const $span = $("#sg_sign .btn-group button span");
-                    if ($span.text().trim() === "签到") signed = helper.safeClick($span.closest("button"));
+                    helper.safeClick($span.closest("button"));
                 }, TIMEOUT.SLOW - 200);
-                return signed;
+                return true;
             }
         },
         "youxiou.com": {
@@ -692,11 +691,13 @@
             excludePaths: [],
             executePaths: [],
             handler(helper) {
-                let signed = false;
+                if ($("body").text().includes("已签")) return false;
+                const $btn = $("#sg_sign");
+                if (!$btn.length) return false;
                 helper.delay(() => {
-                    if (!$("body").text().includes("已签")) signed = helper.safeClick("#sg_sign");
+                    helper.safeClick("#sg_sign");
                 }, TIMEOUT.SLOW - 200);
-                return signed;
+                return true;
             }
         },
 
@@ -742,17 +743,15 @@
             excludePaths: [],
             executePaths: [],
             handler(helper) {
-                let signed = false;
                 const style = $("#dcsignin_tips").attr("style");
-                if (style?.includes("signin_no")) {
-                    helper.safeClick("#dcsignin_tips");
-                    helper.delay(() => {
-                        helper.safeClick($(".dcsignin_list li").eq(8));
-                        $("#emotid").val("8");
-                        signed = helper.safeClick(".pnc");
-                    });
-                }
-                return signed;
+                if (!style?.includes("signin_no")) return false;
+                helper.safeClick("#dcsignin_tips");
+                helper.delay(() => {
+                    helper.safeClick($(".dcsignin_list li").eq(8));
+                    $("#emotid").val("8");
+                    helper.safeClick(".pnc");
+                });
+                return true;
             }
         },
 
@@ -761,13 +760,18 @@
             excludePaths: [],
             executePaths: ["/user/center/signin", "/user/center/lottery"],
             handler(helper) {
-                let signed = false;
+                let shouldSign = false;
+                if ($("button.signin.btn").length || $("button").length || $("#turntable-item-0 .text-free").parent().length) {
+                    shouldSign = true;
+                }
+                if (!shouldSign) return false;
                 helper.delay(() => {
-                    if (helper.textClick("立即签到", "button.signin.btn")) signed = true;
-                    if (helper.textClick("去抽奖", "button")) signed = true;
-                    if ($("#turntable-item-0 .text-free").parent().length && helper.safeClick($("#turntable-item-0 .text-free").parent())) signed = true;
+                    helper.textClick("立即签到", "button.signin.btn");
+                    helper.textClick("去抽奖", "button");
+                    const $lottery = $("#turntable-item-0 .text-free").parent();
+                    if ($lottery.length) helper.safeClick($lottery);
                 }, TIMEOUT.FAST);
-                return signed;
+                return true;
             }
         },
 
@@ -789,13 +793,15 @@
             excludePaths: [],
             executePaths: ["read-gktid-142599.html"],
             handler(helper) {
-                let signed = false;
+                const now = new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" });
+                const today = now.split(" ")[0];
+                const t1 = GM_getValue("time1", "");
+                const t2 = GM_getValue("time2", "");
+                if (t2.split(" ")[0] === today) return false;
+                const $btn1 = $("#url_1");
+                const $btn2 = $("#url_2");
+                if (!$btn1.length && !$btn2.length) return false;
                 helper.delay(() => {
-                    const now = new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" });
-                    const today = now.split(" ")[0];
-                    const t1 = GM_getValue("time1", "");
-                    const t2 = GM_getValue("time2", "");
-                    if (t2.split(" ")[0] === today) return;
                     if (!t1) {
                         helper.safeClick("#url_1");
                         GM_setValue("time1", now);
@@ -807,14 +813,13 @@
                                 helper.safeClick("#url_2");
                                 GM_setValue("time2", cur);
                                 GM_setValue("time1", "");
-                                signed = true;
                                 alert(TIPS.SIGN_SUCCESS);
                             } else setTimeout(check, 10 * 60 * 1000);
                         };
                         check();
                     }
                 }, TIMEOUT.FAST);
-                return signed;
+                return true;
             }
         },
 
@@ -841,13 +846,14 @@
             excludePaths: [],
             executePaths: [],
             handler(helper) {
-                let signed = false;
+                const $btn = $("#kx");
+                if (!$btn.length) return false;
                 helper.delay(() => {
-                    signed = helper.safeClick("#kx");
+                    helper.safeClick("#kx");
                     $("#todaysay").val("今天天气真好~签到。");
                     unsafeWindow.showWindow("qwindow", "qiandao", "post", "0");
                 }, TIMEOUT.MAX);
-                return signed;
+                return true;
             }
         },
 
@@ -883,17 +889,16 @@
             excludePaths: [],
             executePaths: [],
             handler(helper) {
-                let signed = false;
+                const $el = $(".a-s-header-tool-item.header-tool-item-console");
+                if (!$el.length) return false;
                 helper.delay(() => {
-                    const $el = $(".a-s-header-tool-item.header-tool-item-console");
-                    if (!$el.length) return;
                     $el.trigger("mouseover");
                     helper.delay(() => {
                         const $title = $(".user-sign-highlight .user-sign-item-title");
-                        if ($title.text().includes("签到")) signed = helper.safeClick($title.closest(".user-sign-highlight"));
+                        if ($title.text().includes("签到")) helper.safeClick($title.closest(".user-sign-highlight"));
                     }, TIMEOUT.FAST);
                 }, TIMEOUT.SLOW);
-                return signed;
+                return true;
             }
         },
 
@@ -916,17 +921,15 @@
             excludePaths: [],
             executePaths: [],
             handler(helper) {
-                let signed = false;
+                const el = $("#my_amupper")[0];
+                if (!el) return false;
                 helper.delay(() => {
-                    const el = $("#my_amupper")[0];
-                    if (!el) return;
                     const ev = document.createEvent("Events");
                     ev.initEvent("click", true, false);
                     el.dispatchEvent(ev);
                     document.cookie = "adblock_forbit=1;expires=0";
-                    signed = true;
                 }, TIMEOUT.FAST);
-                return signed;
+                return true;
             }
         },
 
@@ -935,7 +938,18 @@
             excludePaths: [],
             executePaths: ["/cn/rewards", "/tw/rewards"],
             handler(helper) {
-                let signed = false;
+                let found = false;
+                $("button").each((_, btn) => {
+                    const $b = $(btn);
+                    const t = $b.text();
+                    if ((t.includes("立即领取") || t.includes("立即領取")) &&
+                        $b.find('span[class*="PointsActivity"]').length &&
+                        $b.closest('[class*="dailyCheckIn"]').length
+                    ) {
+                        found = true;
+                    }
+                });
+                if (!found) return false;
                 helper.delay(() => {
                     $("button").each((_, btn) => {
                         const $b = $(btn);
@@ -944,11 +958,11 @@
                             $b.find('span[class*="PointsActivity"]').length &&
                             $b.closest('[class*="dailyCheckIn"]').length
                         ) {
-                            if (helper.safeClick($b)) signed = true;
+                            helper.safeClick($b);
                         }
                     });
                 }, TIMEOUT.SLOW);
-                return signed;
+                return true;
             }
         },
 
@@ -975,17 +989,17 @@
             excludePaths: [],
             executePaths: [],
             handler(helper) {
-                let signed = false;
+                if ($("body").text().includes("已签到")) return false;
+                const $btn = $("#k_misign_topb a");
+                if (!$btn.length) return false;
                 helper.delay(() => {
-                    if ($("body").text().includes("已签到")) return;
                     helper.safeClick($("#k_misign_topb a"));
-                    signed = true;
                     location.reload();
                     helper.delay(() => {
                         location.href = "https://www.sglynp.com/home.php?mod=space&do=notice&view=system";
                     }, TIMEOUT.FAST + Math.random() * 2000);
                 });
-                return signed;
+                return true;
             }
         },
 
@@ -1006,16 +1020,17 @@
             excludePaths: [],
             executePaths: ["plugin.php?id=dsu_paulsign:sign"],
             handler(helper) {
-                let signed = false;
+                if (!$("body").text().includes("您今日已经签到")) {
+                    location.href = "https://bbs.125.la/";
+                    return false;
+                }
+                const $btn = $("#sign");
+                if (!$btn.length) return false;
                 helper.delay(() => {
-                    if (!$("body").text().includes("您今日已经签到")) {
-                        location.href = "https://bbs.125.la/";
-                        return;
-                    }
-                    signed = helper.safeClick("#sign");
+                    helper.safeClick("#sign");
                     helper.delay(() => helper.safeClick("a.layui-layer-btn0"), TIMEOUT.FAST + Math.random() * 2000);
                 });
-                return signed;
+                return true;
             }
         },
 
@@ -1024,19 +1039,24 @@
             excludePaths: [],
             executePaths: [],
             handler(helper) {
-                let signed = false;
+                let shouldSign = false;
+                let $btn = $('button:contains("每日签到")');
+                if (!$btn.length) $btn = $("button.text-secondary");
+                if (!$btn.length) $btn = $("div.func button:nth-child(3)");
+                if ($btn.length && !$btn.prop("disabled")) shouldSign = true;
+                if (!shouldSign) return false;
                 helper.delay(() => {
                     helper.safeClick($('div[data-v-729e1e50] > div.cursor-pointer'));
                     let $btn = $('button:contains("每日签到")');
                     if (!$btn.length) $btn = $("button.text-secondary");
                     if (!$btn.length) $btn = $("div.func button:nth-child(3)");
                     if ($btn.length && !$btn.prop("disabled")) {
-                        signed = helper.safeClick($btn);
+                        helper.safeClick($btn);
                         location.reload();
                         helper.delay(() => helper.safeClick($('div[data-v-729e1e50] > div.cursor-pointer')), TIMEOUT.FAST + Math.random() * 2000);
                     }
                 });
-                return signed;
+                return true;
             }
         },
 
@@ -1104,15 +1124,21 @@
             excludePaths: [],
             executePaths: ["/app-puyuetian_phptask-index.html"],
             handler(helper) {
-                let signed = false;
+                let found = false;
+                $("button.btn.get span").each((_, s) => {
+                    if ($(s).text().replace(/\s/g, "").includes("领取奖励")) {
+                        found = true;
+                    }
+                });
+                if (!found) return false;
                 helper.delay(() => {
                     $("button.btn.get span").each((_, s) => {
                         if ($(s).text().replace(/\s/g, "").includes("领取奖励")) {
-                            if (helper.safeClick($(s).closest("button"))) signed = true;
+                            helper.safeClick($(s).closest("button"));
                         }
                     });
                 });
-                return signed;
+                return true;
             }
         },
 
